@@ -33,7 +33,7 @@ protected:
 		HANDLE events[2];
 		HRESULT hr;
 		LARGE_INTEGER freq, prev, next;
-		double time;
+		double delay;
 		int dx, dy, dz, btns;
 
 		events[0] = m_event;
@@ -75,7 +75,8 @@ protected:
 			if (FAILED(hr)) continue;
 
 			QueryPerformanceCounter(&next);
-			time = (double)(next.QuadPart - prev.QuadPart) / freq.QuadPart;
+			delay = (double)(next.QuadPart - prev.QuadPart) / freq.QuadPart;
+			prev = next;
 
 			dx = state.lX;
 			dy = state.lY;
@@ -87,7 +88,7 @@ protected:
 
 			if (m_callback != NULL)
 			{
-				m_callback(dx, dy, dz, btns, time, m_param);
+				m_callback(dx, dy, dz, btns, delay, m_param);
 			}
 		}
 
