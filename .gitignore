@@ -1,6 +1,7 @@
 [Dd]ebug/
 [Rr]elease/
 [Ii]pch/
+*.aps
 *.opensdf
 *.sdf
 *.suo
