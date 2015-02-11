@@ -1,22 +1,45 @@
 #pragma once
 
 #include "MouseInput.h"
+#include <algorithm>
 #include <map>
 #include <vector>
-#include "afxwin.h"
+
+class MousePoint
+{
+public:
+	POINT point;
+	COLORREF color;
+	double delay;
+
+	MousePoint()
+	{
+	}
+
+	MousePoint(POINT p, COLORREF c, double d)
+	{
+		point = p;
+		color = c;
+		delay = d;
+	}
+};
+
+typedef std::vector<MousePoint> MousePoints;
+typedef std::map<COLORREF, HBRUSH> MouseBrushes;
 
 class CMouseTestDlg : public CDialog
 {
 	DECLARE_MESSAGE_MAP()
-protected:
 	enum { IDD = IDD_MOUSETEST_DIALOG };
-	std::vector<std::pair<POINT, COLORREF>> m_list;
-	CCriticalSection m_critsect;
+protected:
+	MousePoints m_points;
+	MouseBrushes m_brushes;
 	MouseInput m_input;
-	bool m_cursor;
-	bool m_first;
-	double m_delay;
-	CPoint m_point;
+	CRITICAL_SECTION m_critsect;
+	POINT m_point;
+	bool m_buttons;
+	bool m_cursorHide;
+	bool m_cursorShow;
 	CStatic m_canvasBox;
 	CButton m_clearBtn;
 	CEdit m_rateEdt;
