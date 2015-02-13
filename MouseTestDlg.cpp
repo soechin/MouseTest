@@ -45,7 +45,7 @@ void CMouseTestDlg::DoDataExchange(CDataExchange* dx)
 	CDialog::DoDataExchange(dx);
 	DDX_Control(dx, IDC_CANVAS_BOX, m_canvasBox);
 	DDX_Control(dx, IDC_CLEAR_BTN, m_clearBtn);
-	DDX_Control(dx, IDC_RATE_EDT, m_rateEdt);
+	DDX_Control(dx, IDC_RATE_BOX, m_rateBox);
 	DDX_Control(dx, IDC_SPEED_LST, m_speedLst);
 	DDX_Control(dx, IDC_ACCEL_LST, m_accelLst);
 	DDX_Control(dx, IDC_THRESHOLD1_LST, m_threshold1Lst);
@@ -70,9 +70,7 @@ BOOL CMouseTestDlg::OnInitDialog()
 	m_cursorChk.SetCheck(TRUE);
 	m_input.open(NULL, MouseCallback, this);
 
-	OnUpdateRate();
 	OnUpdateSpeed();
-
 	return TRUE;
 }
 
@@ -168,45 +166,6 @@ OnExit:
 	LeaveCriticalSection(&m_critsect);
 }
 
-void CMouseTestDlg::OnUpdateRate()
-{
-	std::vector<double> delays;
-	CString text;
-	double rate, time;
-
-	if (!TryEnterCriticalSection(&m_critsect))
-	{
-		return;
-	}
-
-	rate = 0;
-	time = 0;
-
-	for (size_t i = m_points.size(); i > 0; i--)
-	{
-		double d = m_points[i - 1].delay;
-		delays.push_back(d);
-		time += d;
-
-		// only few seconds
-		if (time >= 3)
-		{
-			break;
-		}
-	}
-
-	LeaveCriticalSection(&m_critsect);
-
-	if (!delays.empty())
-	{
-		std::sort(delays.begin(), delays.end());
-		rate = 1 / delays[delays.size() >> 1];
-	}
-
-	text.Format(TEXT("%.0lf"), rate);
-	m_rateEdt.SetWindowText(text);
-}
-
 void CMouseTestDlg::OnUpdateSpeed()
 {
 	CString text;
@@ -257,25 +216,24 @@ void CMouseTestDlg::OnDrawItem(int id, LPDRAWITEMSTRUCT data)
 {
 	if (id == m_canvasBox.GetDlgCtrlID())
 	{
+		HDC hdc;
+		RECT client;
 		RECT rect;
 		POINT point;
 		COLORREF color;
 
+		hdc = data->hDC;
+		client = data->rcItem;
+
+		FillRect(hdc, &client, (HBRUSH)GetStockObject(BLACK_BRUSH));
 		EnterCriticalSection(&m_critsect);
 
-		if (m_brushes.find(0) == m_brushes.end())
-		{
-			m_brushes[0] = CreateSolidBrush(0);
-		}
-
-		FillRect(data->hDC, &data->rcItem, m_brushes[0]);
-
-		for (size_t i = 0; i < m_points.size(); i++)
+		for (int i = 0; i < (int)m_points.size(); i++)
 		{
 			point = m_points[i].point;
 			color = m_points[i].color;
 
-			if (!PtInRect(&data->rcItem, point))
+			if (!PtInRect(&client, point))
 			{
 				continue;
 			}
@@ -285,15 +243,122 @@ void CMouseTestDlg::OnDrawItem(int id, LPDRAWITEMSTRUCT data)
 				m_brushes[color] = CreateSolidBrush(color);
 			}
 
-			rect.left = __max(data->rcItem.left, point.x - 1);
-			rect.top = __max(data->rcItem.top, point.y - 1);
-			rect.right = __min(data->rcItem.right, point.x + 1);
-			rect.bottom = __min(data->rcItem.bottom, point.y + 1);
+			rect.left = __max(client.left, point.x - 1);
+			rect.top = __max(client.top, point.y - 1);
+			rect.right = __min(client.right, point.x + 1);
+			rect.bottom = __min(client.bottom, point.y + 1);
 
-			FillRect(data->hDC, &rect, m_brushes[color]);
+			FillRect(hdc, &rect, m_brushes[color]);
 		}
 
 		LeaveCriticalSection(&m_critsect);
+	}
+	else if (id == m_rateBox.GetDlgCtrlID())
+	{
+		std::vector<double> delays;
+		CString text;
+		HDC hdc;
+		HBITMAP hbm;
+		HGDIOBJ hbmp;
+		HGDIOBJ hpen;
+		RECT rect;
+		int width;
+		int height;
+		int delayNum1;
+		int delayNum2;
+		double delaySum;
+		double scaleY;
+
+		rect = data->rcItem;
+		width = rect.right - rect.left;
+		height = rect.bottom - rect.top;
+
+		// push the newest points
+		delayNum1 = 0;
+		delayNum2 = 0;
+		delaySum = 0;
+
+		if (!TryEnterCriticalSection(&m_critsect))
+		{
+			return;
+		}
+
+		for (int i = (int)m_points.size() - 1; i >= 0; i--)
+		{
+			bool done = true;
+			double delay = m_points[i].delay;
+
+			// only few seconds
+			if (delaySum < 3)
+			{
+				delayNum1++;
+				delaySum += delay;
+				done = false;
+			}
+
+			// and 'width' points
+			if (delayNum2 < width)
+			{
+				delayNum2++;
+				done = false;
+			}
+
+			if (done)
+			{
+				break;
+			}
+
+			delays.push_back(delay);
+		}
+
+		LeaveCriticalSection(&m_critsect);
+
+		// draw FPS curve
+		hdc = CreateCompatibleDC(data->hDC);
+		hbm = CreateCompatibleBitmap(data->hDC, width, height);
+		hbmp = SelectObject(hdc, hbm);
+		hpen = SelectObject(hdc, (HPEN)GetStockObject(BLACK_PEN));
+
+		FillRect(hdc, &rect, (HBRUSH)GetStockObject(WHITE_BRUSH));
+		scaleY = (double)height / 1000;
+
+		for (int i = 0; i < delayNum2; i++)
+		{
+			int x = rect.right - i - 1;
+			int y = rect.bottom - (int)(scaleY / delays[i]) - 1;
+
+			x = __max(rect.left, x);
+			y = __max(rect.top, y);
+
+			if (i == 0)
+			{
+				MoveToEx(hdc, x, y, NULL);
+			}
+			else
+			{
+				LineTo(hdc, x, y);
+			}
+		}
+
+		// calculate FPS value
+		if (!delays.empty())
+		{
+			std::sort(delays.begin(), delays.end());
+
+			text.Format(TEXT("%.0lfHz"), 1 / delays[delays.size() >> 1]);
+			SetBkColor(hdc, 0xffffff);
+			SetTextColor(hdc, 0x000000);
+			DrawText(hdc, text, -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+		}
+
+		// show up
+		BitBlt(data->hDC, rect.left, rect.top, width, height,
+			hdc, 0, 0, SRCCOPY);
+
+		SelectObject(hdc, hbmp);
+		SelectObject(hdc, hpen);
+		DeleteObject(hbm);
+		DeleteDC(hdc);
 	}
 	else
 	{
@@ -315,7 +380,7 @@ void CMouseTestDlg::OnTimer(UINT_PTR id)
 {
 	if (id == 1)
 	{
-		OnUpdateRate();
+		m_rateBox.InvalidateRect(NULL, FALSE);
 	}
 
 	CDialog::OnTimer(id);
@@ -355,7 +420,7 @@ void CMouseTestDlg::OnBnClickedClearBtn()
 	EnterCriticalSection(&m_critsect);
 
 	m_points.clear();
-	m_canvasBox.InvalidateRect(NULL, TRUE);
+	m_canvasBox.InvalidateRect(NULL, FALSE);
 
 	LeaveCriticalSection(&m_critsect);
 }

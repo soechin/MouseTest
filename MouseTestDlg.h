@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <map>
 #include <vector>
+#include "afxwin.h"
 
 class MousePoint
 {
@@ -42,7 +43,7 @@ protected:
 	bool m_cursorShow;
 	CStatic m_canvasBox;
 	CButton m_clearBtn;
-	CEdit m_rateEdt;
+	CStatic m_rateBox;
 	CComboBox m_speedLst;
 	CComboBox m_accelLst;
 	CComboBox m_threshold1Lst;
@@ -53,7 +54,6 @@ public:
 	virtual void DoDataExchange(CDataExchange* dx);
 	virtual BOOL OnInitDialog();
 	virtual void OnMouse(int dx, int dy, int dz, int btns, double delay);
-	virtual void OnUpdateRate();
 	virtual void OnUpdateSpeed();
 	virtual void OnOK();
 	virtual void OnCancel();
